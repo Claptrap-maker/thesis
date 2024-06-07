@@ -207,7 +207,7 @@ public class OptimizationService {
 
             // Инициализация очереди курьерами
             for (int i = 0; i < couriers; i++) {
-                pq.add(new Courier(i, 0, 0));
+                pq.add(new Courier(i, 0));
             }
 
             // Распределение точек по курьерам
@@ -239,12 +239,10 @@ public class OptimizationService {
     private static class Courier {
         int id;
         double currentDistance;
-        int PickUpPoints;
 
-        public Courier(int id, double currentDistance, int pickUpPoints) {
+        public Courier(int id, double currentDistance) {
             this.id = id;
             this.currentDistance = currentDistance;
-            PickUpPoints = pickUpPoints;
         }
     }
 }
