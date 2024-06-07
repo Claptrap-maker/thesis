@@ -21,12 +21,13 @@ public class OptimizationController {
             // Преобразование строки в JSON объект
             JSONObject jsonObject = new JSONObject(geoJson);
 
-            // Проверка наличия ключа geoJson
-            if (jsonObject.has("geoJson")) {
+            // Проверка наличия ключей geoJson и couriers
+            if (jsonObject.has("geoJson") && jsonObject.has("couriers")) {
                 JSONObject geoJsonObject = jsonObject.getJSONObject("geoJson");
+                int couriers = jsonObject.getInt("couriers");
 
                 // Обработка данных в сервисе
-                JSONObject optimizedGeoJson = optimizationService.optimizeRoute(geoJsonObject);
+                JSONObject optimizedGeoJson = optimizationService.optimizeRoute(geoJsonObject, couriers);
 
                 return ResponseEntity.ok(optimizedGeoJson.toString());
             } else {

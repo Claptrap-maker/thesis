@@ -10,15 +10,12 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 @Service
 public class OptimizationService {
 
-    public JSONObject optimizeRoute(JSONObject geoJson) {
+    public JSONObject optimizeRoute(JSONObject geoJson, int couriers) {
         try {
             JSONArray features = geoJson.getJSONArray("features");
             List<DoublePoint> points = new ArrayList<>();
@@ -52,7 +49,8 @@ public class OptimizationService {
             }
 
             // Кластерный анализ
-            KMeansPlusPlusClusterer<DoublePoint> clusterer = new KMeansPlusPlusClusterer<>(5, 1000, new EuclideanDistance());
+            int minClusters = 2;
+            KMeansPlusPlusClusterer<DoublePoint> clusterer = new KMeansPlusPlusClusterer<>(Math.max(minClusters, points.size() / 2), 1000, new EuclideanDistance());
             List<CentroidCluster<DoublePoint>> clusters = clusterer.cluster(points);
 
             // Логирование кластеров
@@ -100,6 +98,27 @@ public class OptimizationService {
             // Создание линии для маршрута мобильного склада
             JSONObject lineFeature = createLineFeature(lineCoordinates, "route");
             optimizedFeatures.put(lineFeature);
+
+            for (CentroidCluster<DoublePoint> cluster : clusters) {
+                List<DoublePoint> clusterPoints = cluster.getPoints();
+                double[] clusterCenter = cluster.getCenter().getPoint();
+
+                List<List<DoublePoint>> courierRoutes = calculateCourierRoutes(new DoublePoint(clusterCenter),
+                        clusterPoints, couriers);
+
+                // Логирование маршрута курьера
+                System.out.println("courierRoutes: " + courierRoutes.size());
+                courierRoutes.forEach(route -> route.forEach(System.out::println));
+
+                for (List<DoublePoint> courierRoute : courierRoutes) {
+                    JSONArray courierLineCoordinates = new JSONArray();
+                    for (DoublePoint point : courierRoute) {
+                        courierLineCoordinates.put(new JSONArray().put(point.getPoint()[0]).put(point.getPoint()[1]));
+                    }
+                    JSONObject courierLineFeature = createLineFeature(courierLineCoordinates, "courier_route");
+                    optimizedFeatures.put(courierLineFeature);
+                }
+            }
 
             JSONObject optimizedGeoJson = new JSONObject();
             optimizedGeoJson.put("type", "FeatureCollection");
@@ -166,5 +185,51 @@ public class OptimizationService {
         }
 
         return route;
+    }
+
+    private List<List<DoublePoint>> calculateCourierRoutes(DoublePoint clusterCenter, List<DoublePoint> clusterPoints,
+                                                           int couriers) {
+        List<List<DoublePoint>> courierRoutes = new ArrayList<>();
+
+        for (int i = 0; i < couriers; i++) {
+            courierRoutes.add(new ArrayList<>());
+            courierRoutes.get(i).add(clusterCenter); // Начало маршрута с центра кластера
+        }
+
+        // Приоритетная очередь для отслеживания текущей нагрузки каждого курьера
+        PriorityQueue<Courier> pq = new PriorityQueue<>(Comparator.comparingDouble(c -> c.currentDistance));
+
+        // Инициализация очереди курьерами
+        for (int i = 0; i < couriers; i++) {
+            pq.add(new Courier(i, 0));
+        }
+
+        // Распределение точек по курьерам
+        for (DoublePoint point : clusterPoints) {
+            Courier courier = pq.poll();
+            courierRoutes.get(courier.id).add(point);
+            double distanceToAdd = calculateDistance(courierRoutes.get(courier.id)
+                    .get(courierRoutes.get(courier.id).size() - 2), point);
+            courier.currentDistance += distanceToAdd;
+            pq.add(courier);
+        }
+
+        // Завершение маршрута каждого курьера центром кластера
+        for (int i = 0; i < couriers; i++) {
+            courierRoutes.get(i).add(clusterCenter); // Завершение маршрута центром кластера
+        }
+
+        return courierRoutes;
+    }
+
+    // Класс для хранения информации о курьере
+    private static class Courier {
+        int id;
+        double currentDistance;
+
+        public Courier(int id, double currentDistance) {
+            this.id = id;
+            this.currentDistance = currentDistance;
+        }
     }
 }
