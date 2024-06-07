@@ -96,7 +96,7 @@ public class OptimizationService {
             lineCoordinates.put(new JSONArray().put(startPoint.getPoint()[0]).put(startPoint.getPoint()[1]));
 
             // Создание линии для маршрута мобильного склада
-            JSONObject lineFeature = createLineFeature(lineCoordinates, "route");
+            JSONObject lineFeature = createLineFeature(lineCoordinates, "route", "red");
             optimizedFeatures.put(lineFeature);
 
             for (CentroidCluster<DoublePoint> cluster : clusters) {
@@ -105,6 +105,9 @@ public class OptimizationService {
 
                 List<List<DoublePoint>> courierRoutes = calculateCourierRoutes(new DoublePoint(clusterCenter),
                         clusterPoints, couriers);
+
+                if (courierRoutes.isEmpty())
+                    continue;
 
                 // Логирование маршрута курьера
                 System.out.println("courierRoutes: " + courierRoutes.size());
@@ -115,7 +118,7 @@ public class OptimizationService {
                     for (DoublePoint point : courierRoute) {
                         courierLineCoordinates.put(new JSONArray().put(point.getPoint()[0]).put(point.getPoint()[1]));
                     }
-                    JSONObject courierLineFeature = createLineFeature(courierLineCoordinates, "courier_route");
+                    JSONObject courierLineFeature = createLineFeature(courierLineCoordinates, "courier_route", "#000000");
                     optimizedFeatures.put(courierLineFeature);
                 }
             }
@@ -132,7 +135,7 @@ public class OptimizationService {
         }
     }
 
-    private JSONObject createLineFeature(JSONArray coordinates, String type) throws JSONException {
+    private JSONObject createLineFeature(JSONArray coordinates, String type, String color) throws JSONException {
         JSONObject feature = new JSONObject();
         feature.put("type", "Feature");
         JSONObject geometry = new JSONObject();
@@ -141,6 +144,7 @@ public class OptimizationService {
         feature.put("geometry", geometry);
         JSONObject properties = new JSONObject();
         properties.put("type", type);
+        properties.put("color", color);
         feature.put("properties", properties);
         return feature;
     }
@@ -191,32 +195,41 @@ public class OptimizationService {
                                                            int couriers) {
         List<List<DoublePoint>> courierRoutes = new ArrayList<>();
 
-        for (int i = 0; i < couriers; i++) {
-            courierRoutes.add(new ArrayList<>());
-            courierRoutes.get(i).add(clusterCenter); // Начало маршрута с центра кластера
-        }
+        if (clusterPoints.size() != 1) {
 
-        // Приоритетная очередь для отслеживания текущей нагрузки каждого курьера
-        PriorityQueue<Courier> pq = new PriorityQueue<>(Comparator.comparingDouble(c -> c.currentDistance));
+            for (int i = 0; i < couriers; i++) {
+                courierRoutes.add(new ArrayList<>());
+                courierRoutes.get(i).add(clusterCenter); // Начало маршрута с центра кластера
+            }
 
-        // Инициализация очереди курьерами
-        for (int i = 0; i < couriers; i++) {
-            pq.add(new Courier(i, 0));
-        }
+            // Приоритетная очередь для отслеживания текущей нагрузки каждого курьера
+            PriorityQueue<Courier> pq = new PriorityQueue<>(Comparator.comparingDouble(c -> c.currentDistance));
 
-        // Распределение точек по курьерам
-        for (DoublePoint point : clusterPoints) {
-            Courier courier = pq.poll();
-            courierRoutes.get(courier.id).add(point);
-            double distanceToAdd = calculateDistance(courierRoutes.get(courier.id)
-                    .get(courierRoutes.get(courier.id).size() - 2), point);
-            courier.currentDistance += distanceToAdd;
-            pq.add(courier);
-        }
+            // Инициализация очереди курьерами
+            for (int i = 0; i < couriers; i++) {
+                pq.add(new Courier(i, 0, 0));
+            }
 
-        // Завершение маршрута каждого курьера центром кластера
-        for (int i = 0; i < couriers; i++) {
-            courierRoutes.get(i).add(clusterCenter); // Завершение маршрута центром кластера
+            // Распределение точек по курьерам
+            for (DoublePoint point : clusterPoints) {
+                Courier courier = pq.poll();
+                List<DoublePoint> points = courierRoutes.get(courier.id);
+                if (points.size() % 2 == 0) {
+                    points.add(clusterCenter);
+                }
+                points.add(point);
+                double distanceToAdd = calculateDistance(points
+                        .get(points.size() - 2), point);
+                courier.currentDistance += distanceToAdd;
+                pq.add(courier);
+            }
+
+            // Завершение маршрута каждого курьера центром кластера
+            for (int i = 0; i < couriers; i++) {
+                if (courierRoutes.get(i).size() % 2 == 0) {
+                    courierRoutes.get(i).add(clusterCenter); // Завершение маршрута центром кластера
+                }
+            }
         }
 
         return courierRoutes;
@@ -226,10 +239,12 @@ public class OptimizationService {
     private static class Courier {
         int id;
         double currentDistance;
+        int PickUpPoints;
 
-        public Courier(int id, double currentDistance) {
+        public Courier(int id, double currentDistance, int pickUpPoints) {
             this.id = id;
             this.currentDistance = currentDistance;
+            PickUpPoints = pickUpPoints;
         }
     }
 }
