@@ -263,6 +263,8 @@ public class OptimizationService {
             System.out.println("Couriers: " + pq.size());
             pq.forEach(System.out::println);
             System.out.println("===========================================");
+
+            courierRoutes.removeIf(List::isEmpty);
         }
 
         return courierRoutes;
