@@ -1,8 +1,6 @@
 package ru.ivanova.diplom.logistics.service;
 
-import ch.qos.logback.core.util.StringCollectionUtil;
 import org.apache.commons.math3.ml.clustering.CentroidCluster;
-import org.apache.commons.math3.ml.clustering.Cluster;
 import org.apache.commons.math3.ml.clustering.DoublePoint;
 import org.apache.commons.math3.ml.clustering.KMeansPlusPlusClusterer;
 import org.apache.commons.math3.ml.distance.EuclideanDistance;
@@ -10,6 +8,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.springframework.stereotype.Service;
+import ru.ivanova.diplom.logistics.model.Courier;
+import ru.ivanova.diplom.logistics.model.Parameters;
 
 import java.util.*;
 
@@ -101,7 +101,7 @@ public class OptimizationService {
             optimizedFeatures.put(lineFeature);
 
             // Приоритетная очередь для отслеживания текущей нагрузки каждого курьера
-            PriorityQueue<Courier> pq = new PriorityQueue<>(Comparator.comparingDouble(c -> c.currentDistance));
+            PriorityQueue<Courier> pq = new PriorityQueue<>(Comparator.comparingDouble(Courier::getCurrentDistance));
 
             // Инициализация очереди курьерами
             for (int i = 0; i < couriers; i++) {
@@ -135,6 +135,14 @@ public class OptimizationService {
                 }
             }
 
+            // Вычисление общей суммы расходов
+            double totalExpenses = calculateTotalExpenses(optimizedRoute, pq);
+
+            // Логирование общей сумм расходов
+            System.out.println("+++++++++++++++++++++");
+            System.out.println("Общая сумма раходов: " + totalExpenses);
+            System.out.println("+++++++++++++++++++++");
+
             JSONObject optimizedGeoJson = new JSONObject();
             optimizedGeoJson.put("type", "FeatureCollection");
             optimizedGeoJson.put("features", optimizedFeatures);
@@ -159,6 +167,25 @@ public class OptimizationService {
         properties.put("color", color);
         feature.put("properties", properties);
         return feature;
+    }
+
+    private double calculateTotalExpenses(List<DoublePoint> optimizedRoute, PriorityQueue<Courier> pq) {
+        double totalMobStorageDistance = 0;
+        for (int i = 1; i < optimizedRoute.size(); i++) {
+            totalMobStorageDistance += calculateDistance(optimizedRoute.get(i - 1), optimizedRoute.get(i));
+        }
+
+        double mobStorageExpenses = Parameters.FUEL_RATE * Parameters.FUEL_COST * totalMobStorageDistance
+                + Parameters.DRIVER_SALARY + Parameters.MOB_STORAGE_RATE;
+
+        double courierExpenses = 0;
+        for (Courier courier : pq) {
+            courierExpenses += Parameters.COURIER_SALARY +
+                    courier.getCountPoints() * Parameters.COURIER_RATE *
+                            (courier.getCurrentDistance() / Parameters.COURIER_SPEED);
+        }
+
+        return mobStorageExpenses + courierExpenses;
     }
 
     // Метод для расчета расстояния между двумя точками
@@ -219,7 +246,7 @@ public class OptimizationService {
                 if (point.equals(clusterCenter))
                     continue;
                 Courier courier = pq.poll();
-                List<DoublePoint> points = courierRoutes.get(courier.id);
+                List<DoublePoint> points = courierRoutes.get(courier.getId());
 //                // Логгирование добавление точки
 //                System.out.println("===========================================");
 //                System.out.println("Cluster Center: " + clusterCenter);
@@ -230,8 +257,8 @@ public class OptimizationService {
                     addingPointAndDistance(clusterCenter, courier, points);
                     addingPointAndDistance(clusterCenter, courier, points);
                 } else {
-                    courier.visitedPoints.add(point);
-                    courier.countPoints++;
+                    courier.getVisitedPoints().add(point);
+                    courier.setCountPoints(courier.getVisitedPoints().size());
                 }
                 addingPointAndDistance(point, courier, points);
                 pq.add(courier);
@@ -241,12 +268,13 @@ public class OptimizationService {
                 List<DoublePoint> points = courierRoutes.get(i);
                 if (!points.get(points.size() - 1).equals(clusterCenter)) {
                     for (Courier courier : pq) {
-                        if (courier.id == i) {
+                        if (courier.getId() == i) {
                             addingPointAndDistance(clusterCenter, courier, points);
                             DoublePoint point = points.get(points.size() - 2);
-                            if (!courier.visitedPoints.contains(point)) {
-                                courier.visitedPoints.add(point);
-                                courier.countPoints++;
+                            List<DoublePoint> courierVisitedPoints = courier.getVisitedPoints();
+                            if (!courierVisitedPoints.contains(point)) {
+                                courierVisitedPoints.add(point);
+                                courier.setCountPoints(courierVisitedPoints.size());
                             }
                             break;
                         }
@@ -279,31 +307,7 @@ public class OptimizationService {
 //        System.out.println("===========================================");
         points.add(point);
         double distanceToAdd = calculateDistance(points.get(points.size() - 2), point);
-        courier.currentDistance += distanceToAdd;
-    }
-
-    // Класс для хранения информации о курьере
-    private static class Courier {
-        int id;
-        double currentDistance;
-        int countPoints;
-        List<DoublePoint> visitedPoints;
-
-        public Courier(int id, double currentDistance, List<DoublePoint> visitedPoints) {
-            this.id = id;
-            this.currentDistance = currentDistance;
-            this.visitedPoints = visitedPoints;
-            this.countPoints = visitedPoints.size();
-        }
-
-        @Override
-        public String toString() {
-            return "Courier{" +
-                    "id=" + id +
-                    ", currentDistance=" + currentDistance +
-                    ", countPoints=" + countPoints +
-                    ", visitedPoints=" + visitedPoints.stream().map(doublePoint -> doublePoint.toString() + " ").reduce("", String::concat) +
-                    '}';
-        }
+        double newDistance = courier.getCurrentDistance() + distanceToAdd;
+        courier.setCurrentDistance(newDistance);
     }
 }
