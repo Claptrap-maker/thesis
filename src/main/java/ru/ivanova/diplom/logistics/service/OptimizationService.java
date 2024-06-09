@@ -10,6 +10,7 @@ import org.json.JSONObject;
 import org.springframework.stereotype.Service;
 import ru.ivanova.diplom.logistics.model.Courier;
 import ru.ivanova.diplom.logistics.model.Parameters;
+import ru.ivanova.diplom.logistics.model.Time;
 
 import java.util.*;
 
@@ -138,7 +139,7 @@ public class OptimizationService {
             // Вычисление общей суммы расходов и времени
             double totalExpenses = calculateTotalExpenses(optimizedRoute, pq, params);
             double totalTime = calculateTotalTime(optimizedRoute, pq, params);
-
+            JSONObject formattedTime = Time.convert(totalTime).toJSON();
 
             // Логирование суммарных расходов
             System.out.println("+++++++++++++++++++++");
@@ -154,7 +155,17 @@ public class OptimizationService {
             optimizedGeoJson.put("type", "FeatureCollection");
             optimizedGeoJson.put("features", optimizedFeatures);
 
-            return optimizedGeoJson;
+            // Параметры расходов и времени
+            JSONObject parametersJson = new JSONObject();
+            parametersJson.put("totalExpenses", totalExpenses);
+            parametersJson.put("totalTime", formattedTime);
+
+            // Сборка итогового объекта
+            JSONObject result = new JSONObject();
+            result.put("geojson", optimizedGeoJson);
+            result.put("parameters", parametersJson);
+
+            return result;
 
         } catch (JSONException e) {
             e.printStackTrace();
