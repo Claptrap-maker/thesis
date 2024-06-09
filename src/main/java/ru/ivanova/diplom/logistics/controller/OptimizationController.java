@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import ru.ivanova.diplom.logistics.model.Parameters;
 import ru.ivanova.diplom.logistics.service.OptimizationService;
 
 @RestController
@@ -22,12 +23,28 @@ public class OptimizationController {
             JSONObject jsonObject = new JSONObject(geoJson);
 
             // Проверка наличия ключей geoJson и couriers
-            if (jsonObject.has("geoJson") && jsonObject.has("couriers")) {
+            if (jsonObject.has("geoJson") && jsonObject.has("parameters")) {
                 JSONObject geoJsonObject = jsonObject.getJSONObject("geoJson");
-                int couriers = jsonObject.getInt("couriers");
+                JSONObject paramsJson = jsonObject.getJSONObject("parameters");
+                Parameters params = new Parameters(
+                        paramsJson.getDouble("fuelRate"),
+                        paramsJson.getDouble("fuelCost"),
+                        paramsJson.getDouble("mobStorageRate"),
+                        paramsJson.getDouble("driverSalary"),
+                        paramsJson.getInt("countCouriers"),
+                        paramsJson.getDouble("courierSalary"),
+                        paramsJson.getDouble("courierRate"),
+                        paramsJson.getDouble("maxMobStorageCapacity"),
+                        paramsJson.getDouble("maxCourierCapacity"),
+                        paramsJson.getDouble("maxTime"),
+                        paramsJson.getDouble("orderProcessingTime"),
+                        paramsJson.getDouble("courierSpeed"),
+                        paramsJson.getDouble("mobStorageSpeed"),
+                        paramsJson.getDouble("maxExpenses")
+                );
 
                 // Обработка данных в сервисе
-                JSONObject optimizedGeoJson = optimizationService.optimizeRoute(geoJsonObject, couriers);
+                JSONObject optimizedGeoJson = optimizationService.optimizeRoute(geoJsonObject, params);
 
                 return ResponseEntity.ok(optimizedGeoJson.toString());
             } else {

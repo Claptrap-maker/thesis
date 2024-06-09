@@ -16,7 +16,7 @@ import java.util.*;
 @Service
 public class OptimizationService {
 
-    public JSONObject optimizeRoute(JSONObject geoJson, int couriers) {
+    public JSONObject optimizeRoute(JSONObject geoJson, Parameters params) {
         try {
             JSONArray features = geoJson.getJSONArray("features");
             List<DoublePoint> points = new ArrayList<>();
@@ -104,7 +104,7 @@ public class OptimizationService {
             PriorityQueue<Courier> pq = new PriorityQueue<>(Comparator.comparingDouble(Courier::getCurrentDistance));
 
             // Инициализация очереди курьерами
-            for (int i = 0; i < couriers; i++) {
+            for (int i = 0; i < params.getCOUNT_COURIERS(); i++) {
                 pq.add(new Courier(i, 0, new ArrayList<>()));
             }
 
@@ -113,7 +113,7 @@ public class OptimizationService {
                 double[] clusterCenter = cluster.getCenter().getPoint();
 
                 List<List<DoublePoint>> courierRoutes = calculateCourierRoutes(new DoublePoint(clusterCenter),
-                        clusterPoints, couriers, pq);
+                        clusterPoints, params.getCOUNT_COURIERS(), pq);
 
                 if (courierRoutes.isEmpty())
                     continue;
@@ -135,12 +135,19 @@ public class OptimizationService {
                 }
             }
 
-            // Вычисление общей суммы расходов
-            double totalExpenses = calculateTotalExpenses(optimizedRoute, pq);
+            // Вычисление общей суммы расходов и времени
+            double totalExpenses = calculateTotalExpenses(optimizedRoute, pq, params);
+            double totalTime = calculateTotalTime(optimizedRoute, pq, params);
 
-            // Логирование общей сумм расходов
+
+            // Логирование суммарных расходов
             System.out.println("+++++++++++++++++++++");
             System.out.println("Общая сумма раходов: " + totalExpenses);
+            System.out.println("+++++++++++++++++++++");
+
+            // Логирование суммарного времени
+            System.out.println("+++++++++++++++++++++");
+            System.out.println("Общее время: " + totalTime);
             System.out.println("+++++++++++++++++++++");
 
             JSONObject optimizedGeoJson = new JSONObject();
@@ -169,23 +176,44 @@ public class OptimizationService {
         return feature;
     }
 
-    private double calculateTotalExpenses(List<DoublePoint> optimizedRoute, PriorityQueue<Courier> pq) {
+    private double calculateTotalExpenses(List<DoublePoint> optimizedRoute, PriorityQueue<Courier> pq,
+                                          Parameters params) {
+        double totalMobStorageDistance = getTotalMobStorageDistance(optimizedRoute);
+
+        double mobStorageExpenses = params.getFUEL_RATE() * params.getFUEL_COST() * totalMobStorageDistance
+                + params.getDRIVER_SALARY() + params.getMOB_STORAGE_RATE();
+
+        double courierExpenses = 0;
+        for (Courier courier : pq) {
+            courierExpenses += params.getCOURIER_SALARY() +
+                    courier.getCountPoints() * params.getCOURIER_RATE() *
+                            (courier.getCurrentDistance() / params.getCOURIER_SPEED());
+        }
+
+        return mobStorageExpenses + courierExpenses;
+    }
+
+    private double calculateTotalTime(List<DoublePoint> optimizedRoute, PriorityQueue<Courier> pq, Parameters params) {
+        double totalMobStorageDistance = getTotalMobStorageDistance(optimizedRoute);
+
+        double mobStorageTime = totalMobStorageDistance / params.getMOB_STORAGE_SPEED();
+
+        double courierTime = 0;
+        for (Courier courier : pq) {
+            double travelTime = courier.getCurrentDistance() / params.getCOURIER_SPEED();
+            double processingTime = courier.getCountPoints() * params.getORDER_PROCESSING_TIME();
+            courierTime = Math.max(courierTime, travelTime + processingTime);
+        }
+
+        return mobStorageTime + courierTime;
+    }
+
+    private double getTotalMobStorageDistance(List<DoublePoint> optimizedRoute) {
         double totalMobStorageDistance = 0;
         for (int i = 1; i < optimizedRoute.size(); i++) {
             totalMobStorageDistance += calculateDistance(optimizedRoute.get(i - 1), optimizedRoute.get(i));
         }
-
-        double mobStorageExpenses = Parameters.FUEL_RATE * Parameters.FUEL_COST * totalMobStorageDistance
-                + Parameters.DRIVER_SALARY + Parameters.MOB_STORAGE_RATE;
-
-        double courierExpenses = 0;
-        for (Courier courier : pq) {
-            courierExpenses += Parameters.COURIER_SALARY +
-                    courier.getCountPoints() * Parameters.COURIER_RATE *
-                            (courier.getCurrentDistance() / Parameters.COURIER_SPEED);
-        }
-
-        return mobStorageExpenses + courierExpenses;
+        return totalMobStorageDistance;
     }
 
     // Метод для расчета расстояния между двумя точками
