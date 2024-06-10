@@ -17,6 +17,8 @@ import java.util.*;
 @Service
 public class OptimizationService {
 
+    private static double MAX_CLUSTER_RADIUS = 5.0;
+
     public JSONObject optimizeRoute(JSONObject geoJson, Parameters params) {
         try {
             JSONArray features = geoJson.getJSONArray("features");
@@ -54,6 +56,9 @@ public class OptimizationService {
             int minClusters = 2;
             KMeansPlusPlusClusterer<DoublePoint> clusterer = new KMeansPlusPlusClusterer<>(Math.max(minClusters, points.size() / 2), 1000, new EuclideanDistance());
             List<CentroidCluster<DoublePoint>> clusters = clusterer.cluster(points);
+
+            // Проверка радиусов кластеров и корректировка
+            clusters = ensureMaxClusterRadius(clusters, clusterer);
 
 //            // Логирование кластеров
 //            System.out.println("Number of clusters: " + clusters.size());
@@ -138,7 +143,7 @@ public class OptimizationService {
 
             // Вычисление общей суммы расходов и времени
             double totalExpenses = calculateTotalExpenses(optimizedRoute, pq, params);
-            double totalTime = calculateTotalTime(optimizedRoute, pq, params);
+            double totalTime = calculateTotalTime(optimizedRoute, pq, params, clusters);
             JSONObject formattedTime = Time.convert(totalTime).toJSON();
 
             // Логирование суммарных расходов
@@ -204,26 +209,54 @@ public class OptimizationService {
         return mobStorageExpenses + courierExpenses;
     }
 
-    private double calculateTotalTime(List<DoublePoint> optimizedRoute, PriorityQueue<Courier> pq, Parameters params) {
+    private double calculateTotalTime(List<DoublePoint> optimizedRoute, PriorityQueue<Courier> pq, Parameters params,
+                                      List<CentroidCluster<DoublePoint>> clusters) {
         double totalMobStorageDistance = getTotalMobStorageDistance(optimizedRoute);
 
         double mobStorageTime = totalMobStorageDistance / params.getMOB_STORAGE_SPEED();
 
-        double courierTime = 0;
+        double maxCourierTime = 0;
         for (Courier courier : pq) {
+
             double travelTime = courier.getCurrentDistance() / params.getCOURIER_SPEED();
             double processingTime = courier.getCountPoints() * params.getORDER_PROCESSING_TIME();
-            courierTime = Math.max(courierTime, travelTime + processingTime);
+            maxCourierTime = Math.max(maxCourierTime, travelTime + processingTime);
         }
 
-        return mobStorageTime + courierTime;
+        // Добавляем время обработки заказов в кластерах с одной точкой
+        for (CentroidCluster<DoublePoint> cluster : clusters) {
+            if (cluster.getPoints().size() == 1) {
+                maxCourierTime += params.getORDER_PROCESSING_TIME();
+
+                // Логирование времени для кластера с 1 точкой
+                System.out.println("//////////////////");
+                System.out.println("Произошло добавление 1 часа");
+                System.out.println("//////////////////");
+            }
+        }
+
+        return mobStorageTime + maxCourierTime;
     }
 
     private double getTotalMobStorageDistance(List<DoublePoint> optimizedRoute) {
+
+        // Логирование маршрута
+        System.out.println();
+        System.out.println();
+        System.out.println("Route: " + optimizedRoute.size());
+        optimizedRoute.forEach(System.out::println);
+        System.out.println();
+        System.out.println();
+
         double totalMobStorageDistance = 0;
         for (int i = 1; i < optimizedRoute.size(); i++) {
             totalMobStorageDistance += calculateDistance(optimizedRoute.get(i - 1), optimizedRoute.get(i));
         }
+
+        //Логирование дистанции маршрута мобильного склада
+        System.out.println();
+        System.out.println("Дистанция маршрута мобильного склада в км: " + totalMobStorageDistance);
+        System.out.println();
         return totalMobStorageDistance;
     }
 
@@ -234,6 +267,39 @@ public class OptimizationService {
         double x2 = point2.getPoint()[0];
         double y2 = point2.getPoint()[1];
         return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+    }
+
+    private List<CentroidCluster<DoublePoint>> ensureMaxClusterRadius(List<CentroidCluster<DoublePoint>> clusters,
+                                                                      KMeansPlusPlusClusterer<DoublePoint> clusterer) {
+        List<CentroidCluster<DoublePoint>> adjustedClusters = new ArrayList<>();
+
+        for (CentroidCluster<DoublePoint> cluster : clusters) {
+            double radius = calculateClusterRadius(cluster);
+            if (radius > MAX_CLUSTER_RADIUS) {
+                // Разбиение большого кластера на более мелкие
+                List<DoublePoint> points = cluster.getPoints();
+                List<CentroidCluster<DoublePoint>> smallerClusters = clusterer.cluster(points);
+                adjustedClusters.addAll(ensureMaxClusterRadius(smallerClusters, clusterer));
+            } else {
+                adjustedClusters.add(cluster);
+            }
+        }
+
+        return adjustedClusters;
+    }
+
+    private double calculateClusterRadius(CentroidCluster<DoublePoint> cluster) {
+        double[] center = cluster.getCenter().getPoint();
+        double maxDistance = 0;
+
+        for (DoublePoint point : cluster.getPoints()) {
+            double distance = calculateDistance(new DoublePoint(center), point);
+            if (distance > maxDistance) {
+                maxDistance = distance;
+            }
+        }
+
+        return maxDistance;
     }
 
     // Метод для расчета оптимального маршрута (алгоритм ближайшего соседа)
@@ -338,15 +404,19 @@ public class OptimizationService {
     }
 
     private void addingPointAndDistance(DoublePoint point, Courier courier, List<DoublePoint> points) {
-//        // Логгирование добавления точки
-//        System.out.println("===========================================");
-//        System.out.println("Points size: " + points.size());
-//        System.out.println("Last point in points: " + points.get(points.size()-1));
-//        System.out.println("Point I'm going to add: " + point);
-//        System.out.println("===========================================");
+        // Логгирование добавления точки
+        System.out.println();
+        System.out.println("Last point in points: " + points.get(points.size()-1));
+        System.out.println("Point I'm going to add: " + point);
+        System.out.println();
         points.add(point);
         double distanceToAdd = calculateDistance(points.get(points.size() - 2), point);
         double newDistance = courier.getCurrentDistance() + distanceToAdd;
         courier.setCurrentDistance(newDistance);
+
+        //Логирование дистанции курьера
+        System.out.println();
+        System.out.println("Курьер " + courier.getId() + " с новой дистанцией " + distanceToAdd);
+        System.out.println();
     }
 }
