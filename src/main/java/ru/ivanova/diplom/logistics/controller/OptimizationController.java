@@ -31,16 +31,17 @@ public class OptimizationController {
                         paramsJson.getDouble("fuelCost"),
                         paramsJson.getDouble("mobStorageRate"),
                         paramsJson.getDouble("driverSalary"),
-                        paramsJson.getInt("countCouriers"),
+                        paramsJson.getInt("maxCountCouriers"),
                         paramsJson.getDouble("courierSalary"),
                         paramsJson.getDouble("courierRate"),
+                        paramsJson.getDouble("energyConsumption"),
+                        paramsJson.getDouble("costEnergyConsumption"),
                         paramsJson.getDouble("maxMobStorageCapacity"),
                         paramsJson.getDouble("maxCourierCapacity"),
                         paramsJson.getDouble("maxTime"),
                         paramsJson.getDouble("orderProcessingTime"),
                         paramsJson.getDouble("courierSpeed"),
-                        paramsJson.getDouble("mobStorageSpeed"),
-                        paramsJson.getDouble("maxExpenses")
+                        paramsJson.getDouble("mobStorageSpeed")
                 );
 
                 // Обработка данных в сервисе
