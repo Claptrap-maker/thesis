@@ -8,33 +8,37 @@ import lombok.Data;
 @AllArgsConstructor
 public class Parameters {
     // Расход топлива мобильного склада в литрах на км
-    private double FUEL_RATE;
+    private double FUEL_RATE_MOB_STORAGE;
+    // Расход топлива машины курьера в литрах на км
+    private double FUEL_RATE_COURIER_CAR;
     // Стоимость топлива за литр
     private double FUEL_COST;
     // Стоимость обслуживания мобильного склада в день
     private double MOB_STORAGE_RATE;
-    // Зарплата водителя мобильного склада в день
+    // Стоимость обслуживания машины курьера в день
+    private double COURIER_CAR_RATE;
+    // Зарплата водителя мобильного склада / курьера на машине в день
     private double DRIVER_SALARY;
-    // Количество курьеров
+    // Максимальное количество курьеров
     private int MAX_COUNT_COURIERS;
-    // Зарплата курьера в день
+    // Зарплата курьера на самокате в день
     private double COURIER_SALARY;
-    // Стоимость обслуживания техники курьера на точку
-    private double COURIER_RATE;
+    // Стоимость обслуживания самоката курьера
+    private double COURIER_SCOOTER_RATE;
     // Расход энергии в кВ (за час)
     private double ENERGY_CONSUMPTION;
     // Стоимость расхода энергии в час за 1 кВ
     private double ENERGY_CONSUMPTION_COST;
-    // Максимальная вместимость мобильного склада (кг)
-    private double MAX_MOB_STORAGE_CAPACITY;
-    // Максимальная вместимость курьера (кг)
-    private double MAX_COURIER_CAPACITY;
+    // Максимальная вместимость/объем машины курьера (в кубометрах)
+    private double MAX_COURIER_CAR_CAPACITY;
+    // Максимальная вместимость/объем заказа на 1 точку пункта выдачи (в кубометрах)
+    private double MAX_DELIVERY_CAPACITY;
     // Максимальное время доставки (часы)
     private double MAX_TIME;
-    // Время на обработку заказа (часы)
+    // Среднее время на обработку заказа (часы)
     private double ORDER_PROCESSING_TIME;
-    // Скорость курьера (км/ч)
-    private double COURIER_SPEED;
-    // Скорость мобильного склада (км/ч)
+    // Средняя скорость самоката курьера (км/ч)
+    private double COURIER_SCOOTER_SPEED;
+    // Средняя скорость мобильного склада / машины курьера (км/ч)
     private double MOB_STORAGE_SPEED;
 }

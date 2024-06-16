@@ -23,8 +23,6 @@ public class OptimizationService {
 
     private static final double MAX_CLUSTER_RADIUS = 5.0;
     private static final int MAX_COUNT_CLUSTERS = 10;
-    private static final int MAX_COUNT_CLUSTER_POINTS = 100;
-    private static final int MAX_COUNT_COURIERS = 10;
 
     public JSONObject optimizeRoute(JSONObject geoJson, Parameters params) {
         try {
@@ -34,7 +32,7 @@ public class OptimizationService {
             List<CompletableFuture<OptimizationResult>> futures = new ArrayList<>();
 
             for (int clusterCount = 2; clusterCount <= MAX_COUNT_CLUSTERS; clusterCount++) {
-                for (int couriers = 3; couriers <= MAX_COUNT_COURIERS; couriers++) {
+                for (int couriers = 3; couriers <= params.getMAX_COUNT_COURIERS(); couriers++) {
                     for (double clusterRadius = 0.5; clusterRadius <= MAX_CLUSTER_RADIUS; clusterRadius += 0.1) {
                         final int finalClusterCount = clusterCount;
                         final int finalCouriers = couriers;
@@ -42,20 +40,22 @@ public class OptimizationService {
 
                         CompletableFuture<OptimizationResult> future = CompletableFuture.supplyAsync(() -> {
                             Parameters newParams = new Parameters(
-                                    params.getFUEL_RATE(),
+                                    params.getFUEL_RATE_MOB_STORAGE(),
+                                    params.getFUEL_RATE_COURIER_CAR(),
                                     params.getFUEL_COST(),
                                     params.getMOB_STORAGE_RATE(),
+                                    params.getCOURIER_CAR_RATE(),
                                     params.getDRIVER_SALARY(),
                                     params.getMAX_COUNT_COURIERS(),
                                     params.getCOURIER_SALARY(),
-                                    params.getCOURIER_RATE(),
+                                    params.getCOURIER_SCOOTER_RATE(),
                                     params.getENERGY_CONSUMPTION(),
                                     params.getENERGY_CONSUMPTION_COST(),
-                                    params.getMAX_MOB_STORAGE_CAPACITY(),
-                                    params.getMAX_COURIER_CAPACITY(),
+                                    params.getMAX_COURIER_CAR_CAPACITY(),
+                                    params.getMAX_DELIVERY_CAPACITY(),
                                     params.getMAX_TIME(),
                                     params.getORDER_PROCESSING_TIME(),
-                                    params.getCOURIER_SPEED(),
+                                    params.getCOURIER_SCOOTER_SPEED(),
                                     params.getMOB_STORAGE_SPEED()
                             );
                             return calculateOptimization(points, startPoint, newParams, finalClusterCount,
@@ -69,8 +69,13 @@ public class OptimizationService {
             futures.stream()
                     .map(CompletableFuture::join)
                     .sorted(Comparator.comparingDouble(OptimizationResult::getTotalExpenses))
-                    .forEach(result -> System.out.println("Расходы: " + result.getTotalExpenses()
-                            + "\n Затраченное время" + Time.convert(result.getTotalTime())));
+                    .findFirst().stream().toList().forEach(result ->
+                            System.out.println("Расходы: " + result.getTotalExpenses()
+                            + "\nЗатраченное время: " + Time.convert(result.getTotalTime())
+                            + "\nРасстояние, пройденное мобильным складом: " + result.getDistanceMobStorage()
+                            + "\nРасстояния, пройденные курьерами: "
+                                    + result.getDistanceCouriers().stream().map(String::valueOf)
+                                    .collect(Collectors.joining(", "))));
 
             OptimizationResult bestResult = futures.stream()
                     .map(CompletableFuture::join)
@@ -126,7 +131,18 @@ public class OptimizationService {
         double totalExpenses = calculateTotalExpenses(optimizedRoute, pq, params);
         double totalTime = calculateTotalTime(optimizedRoute, pq, params, clusters);
 
-        return new OptimizationResult(optimizedRoute, courierRoutes, totalExpenses, totalTime, couriers);
+        OptimizationResult result =  new OptimizationResult(optimizedRoute, courierRoutes, totalExpenses, totalTime,
+                couriers);
+
+        result.setDistanceMobStorage(getTotalMobStorageDistance(optimizedRoute));
+        List<Double> courierDistances = new ArrayList<>();
+        for (Courier courier : pq) {
+            courierDistances.add(courier.getCurrentDistance());
+        }
+
+        result.setDistanceCouriers(courierDistances);
+
+        return result;
     }
 
     private List<List<DoublePoint>> calculateCourierRoutes(List<CentroidCluster<DoublePoint>> clusters,
@@ -294,14 +310,14 @@ public class OptimizationService {
     private double calculateTotalExpenses(List<DoublePoint> optimizedRoute, PriorityQueue<Courier> pq, Parameters params) {
         double totalMobStorageDistance = getTotalMobStorageDistance(optimizedRoute);
 
-        double mobStorageExpenses = params.getFUEL_RATE() * params.getFUEL_COST() * totalMobStorageDistance
+        double mobStorageExpenses = params.getFUEL_RATE_MOB_STORAGE() * params.getFUEL_COST() * totalMobStorageDistance
                 + params.getDRIVER_SALARY() + params.getMOB_STORAGE_RATE();
 
         double courierExpenses = 0;
         for (Courier courier : pq) {
-            double courierDeliveryTime = courier.getCurrentDistance() / params.getCOURIER_SPEED();
+            double courierDeliveryTime = courier.getCurrentDistance() / params.getCOURIER_SCOOTER_SPEED();
             courierExpenses += params.getCOURIER_SALARY() +
-                    courier.getCountPoints() * params.getCOURIER_RATE() * courierDeliveryTime
+                    courier.getCountPoints() * params.getCOURIER_SCOOTER_RATE() * courierDeliveryTime
                     + params.getENERGY_CONSUMPTION() * params.getENERGY_CONSUMPTION_COST() * courierDeliveryTime;
         }
 
@@ -318,7 +334,7 @@ public class OptimizationService {
 
         double maxCourierTime = 0;
         for (Courier courier : pq) {
-            double travelTime = courier.getCurrentDistance() / params.getCOURIER_SPEED();
+            double travelTime = courier.getCurrentDistance() / params.getCOURIER_SCOOTER_SPEED();
             double processingTime = courier.getCountPoints() * params.getORDER_PROCESSING_TIME();
             maxCourierTime = Math.max(maxCourierTime, travelTime + processingTime);
         }
@@ -370,7 +386,9 @@ public class OptimizationService {
         return route;
     }
 
-    private List<CentroidCluster<DoublePoint>> ensureMaxClusterRadius(List<CentroidCluster<DoublePoint>> clusters, KMeansPlusPlusClusterer<DoublePoint> clusterer, double maxRadius) {
+    private List<CentroidCluster<DoublePoint>> ensureMaxClusterRadius(List<CentroidCluster<DoublePoint>> clusters,
+                                                                      KMeansPlusPlusClusterer<DoublePoint> clusterer,
+                                                                      double maxRadius) {
         List<CentroidCluster<DoublePoint>> newClusters = new ArrayList<>();
 
         for (CentroidCluster<DoublePoint> cluster : clusters) {
