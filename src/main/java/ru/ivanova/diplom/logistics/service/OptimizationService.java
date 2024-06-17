@@ -8,11 +8,10 @@ import org.apache.commons.math3.random.JDKRandomGenerator;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import ru.ivanova.diplom.logistics.model.Courier;
-import ru.ivanova.diplom.logistics.model.OptimizationResult;
-import ru.ivanova.diplom.logistics.model.Parameters;
-import ru.ivanova.diplom.logistics.model.Time;
+import ru.ivanova.diplom.logistics.config.RabbitConfig;
+import ru.ivanova.diplom.logistics.model.*;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -23,8 +22,14 @@ public class OptimizationService {
 
     private static final double MAX_CLUSTER_RADIUS = 5.0;
     private static final int MAX_COUNT_CLUSTERS = 10;
+    private final RabbitMQSender rabbitMQSender;
 
-    public JSONObject optimizeRoute(JSONObject geoJson, Parameters params) {
+    @Autowired
+    public OptimizationService(RabbitMQSender rabbitMQSender) {
+        this.rabbitMQSender = rabbitMQSender;
+    }
+
+    public JSONObject optimizeRoute(JSONObject geoJson, Parameters params, JSONObject requestDataJson) {
         try {
             List<DoublePoint> points = extractPointsFromGeoJson(geoJson);
             DoublePoint startPoint = points.remove(0); // Начальная точка - первый элемент
@@ -84,7 +89,10 @@ public class OptimizationService {
                     .orElse(null);
 
             if (bestResult != null) {
-                return createResultGeoJson(bestResult);
+                JSONObject resultJson = createResultGeoJson(bestResult, requestDataJson);
+                // Отправка JSON в RabbitMQ
+                rabbitMQSender.send(RabbitConfig.QUEUE_NAME, resultJson.toString());
+                return resultJson;
             } else {
                 throw new RuntimeException("No valid optimization result found.");
             }
@@ -254,7 +262,7 @@ public class OptimizationService {
 //        System.out.println();
     }
 
-    private JSONObject createResultGeoJson(OptimizationResult result) throws JSONException {
+    private JSONObject createResultGeoJson(OptimizationResult result, JSONObject requestDataJson) throws JSONException {
         JSONArray optimizedFeatures = new JSONArray();
 
         JSONArray lineCoordinates = new JSONArray();
@@ -282,13 +290,14 @@ public class OptimizationService {
         optimizedGeoJson.put("features", optimizedFeatures);
 
         JSONObject parametersJson = new JSONObject();
-        parametersJson.put("totalExpenses", result.getTotalExpenses());
-        parametersJson.put("totalTime", Time.convert(result.getTotalTime()).toJSON());
-        parametersJson.put("optimalCouriersCount", result.getOptimalCouriersCount());
+        parametersJson.put("total_expenses", result.getTotalExpenses());
+        parametersJson.put("total_time", Time.convert(result.getTotalTime()).toJSON());
+        parametersJson.put("optimal_couriers_count", result.getOptimalCouriersCount());
 
         JSONObject resultJson = new JSONObject();
-        resultJson.put("geojson", optimizedGeoJson);
-        resultJson.put("parameters", parametersJson);
+        resultJson.put("dynamic_model", optimizedGeoJson);
+        resultJson.put("dynamic_model_parameters", parametersJson);
+        resultJson.put("request_data", requestDataJson);
 
         return resultJson;
     }

@@ -5,7 +5,9 @@ import org.apache.commons.math3.ml.distance.EuclideanDistance;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import ru.ivanova.diplom.logistics.config.RabbitConfig;
 import ru.ivanova.diplom.logistics.model.*;
 import ru.ivanova.diplom.logistics.utils.JsonUtils;
 
@@ -17,7 +19,15 @@ import java.util.PriorityQueue;
 @Service
 public class StaticModelService {
 
-    public JSONObject optimizeCourierRoutes(JSONObject geoJson, Parameters params, JSONArray ordersArray) {
+    private final RabbitMQSender rabbitMQSender;
+
+    @Autowired
+    public StaticModelService(RabbitMQSender rabbitMQSender) {
+        this.rabbitMQSender = rabbitMQSender;
+    }
+
+    public JSONObject optimizeCourierRoutes(JSONObject geoJson, Parameters params, JSONArray ordersArray,
+                                            JSONObject requestDataJson) {
         try {
             List<DoublePoint> points = extractPointsFromGeoJson(geoJson);
             DoublePoint startPoint = points.remove(0); // Начальная точка - первый элемент
@@ -47,7 +57,10 @@ public class StaticModelService {
             OptimizationResult result = new OptimizationResult(courierRoutes, totalExpenses, totalTime);
 
             if (result.getTotalTime() <= params.getMAX_TIME()) {
-                return createResultGeoJson(result, params);
+                JSONObject resultJson = createResultGeoJson(result, params, requestDataJson);
+                // Отправка JSON в RabbitMQ
+                rabbitMQSender.send(RabbitConfig.QUEUE_NAME, resultJson.toString());
+                return resultJson;
             } else {
                 throw new RuntimeException("No valid optimization result found.");
             }
@@ -183,7 +196,7 @@ public class StaticModelService {
         return nearestPoint;
     }
 
-    private JSONObject createResultGeoJson(OptimizationResult result, Parameters params) throws JSONException {
+    private JSONObject createResultGeoJson(OptimizationResult result, Parameters params, JSONObject requestDataJson) throws JSONException {
         int i = 1;
         String[] colors = {"#FF5733", "#33FF57", "#5733FF", "#33FFFF", "#FF33FF"};
         JSONArray optimizedFeatures = new JSONArray();
@@ -203,13 +216,14 @@ public class StaticModelService {
         optimizedGeoJson.put("features", optimizedFeatures);
 
         JSONObject parametersJson = new JSONObject();
-        parametersJson.put("totalExpenses", result.getTotalExpenses());
-        parametersJson.put("totalTime", Time.convert(result.getTotalTime()).toJSON());
-        parametersJson.put("couriersCount", params.getMAX_COUNT_COURIERS());
+        parametersJson.put("total_expenses", result.getTotalExpenses());
+        parametersJson.put("total_time", Time.convert(result.getTotalTime()).toJSON());
+        parametersJson.put("couriers_count", params.getMAX_COUNT_COURIERS());
 
         JSONObject resultJson = new JSONObject();
-        resultJson.put("staticModel", optimizedGeoJson);
-        resultJson.put("staticModelParameters", parametersJson);
+        resultJson.put("static_model", optimizedGeoJson);
+        resultJson.put("static_model_parameters", parametersJson);
+        resultJson.put("request_data", requestDataJson);
 
         return resultJson;
     }
