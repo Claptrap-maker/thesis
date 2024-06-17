@@ -5,16 +5,14 @@ import org.apache.commons.math3.ml.distance.EuclideanDistance;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.springframework.amqp.core.MessageProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.ivanova.diplom.logistics.config.RabbitConfig;
 import ru.ivanova.diplom.logistics.model.*;
 import ru.ivanova.diplom.logistics.utils.JsonUtils;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.PriorityQueue;
+import java.util.*;
 
 @Service
 public class StaticModelService {
@@ -58,8 +56,13 @@ public class StaticModelService {
 
             if (result.getTotalTime() <= params.getMAX_TIME()) {
                 JSONObject resultJson = createResultGeoJson(result, params, requestDataJson);
-                // Отправка JSON в RabbitMQ
-                rabbitMQSender.send(RabbitConfig.QUEUE_NAME, resultJson.toString());
+
+                // Подготовка заголовков
+                Map<String, Object> headers = new HashMap<>();
+                headers.put("type", "static");
+
+                // Отправка JSON в RabbitMQ с заголовками
+                rabbitMQSender.send(RabbitConfig.QUEUE_NAME, resultJson.toString(), headers);
                 return resultJson;
             } else {
                 throw new RuntimeException("No valid optimization result found.");

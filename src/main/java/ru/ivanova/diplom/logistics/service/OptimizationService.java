@@ -8,10 +8,14 @@ import org.apache.commons.math3.random.JDKRandomGenerator;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import org.springframework.amqp.core.MessageProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import ru.ivanova.diplom.logistics.config.RabbitConfig;
-import ru.ivanova.diplom.logistics.model.*;
+import ru.ivanova.diplom.logistics.model.Courier;
+import ru.ivanova.diplom.logistics.model.OptimizationResult;
+import ru.ivanova.diplom.logistics.model.Parameters;
+import ru.ivanova.diplom.logistics.model.Time;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -90,8 +94,13 @@ public class OptimizationService {
 
             if (bestResult != null) {
                 JSONObject resultJson = createResultGeoJson(bestResult, requestDataJson);
-                // Отправка JSON в RabbitMQ
-                rabbitMQSender.send(RabbitConfig.QUEUE_NAME, resultJson.toString());
+
+                // Подготовка заголовков
+                Map<String, Object> headers = new HashMap<>();
+                headers.put("type", "dynamic");
+
+                // Отправка JSON в RabbitMQ с заголовками
+                rabbitMQSender.send(RabbitConfig.QUEUE_NAME, resultJson.toString(), headers);
                 return resultJson;
             } else {
                 throw new RuntimeException("No valid optimization result found.");
