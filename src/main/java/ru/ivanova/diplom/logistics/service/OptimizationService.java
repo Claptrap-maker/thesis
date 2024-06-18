@@ -306,6 +306,7 @@ public class OptimizationService {
         JSONObject resultJson = new JSONObject();
         resultJson.put("dynamic_model", optimizedGeoJson);
         resultJson.put("dynamic_model_parameters", parametersJson);
+        requestDataJson.put("model_type", "dynamic");
         resultJson.put("request_data", requestDataJson);
 
         return resultJson;

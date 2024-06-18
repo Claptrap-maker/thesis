@@ -226,6 +226,7 @@ public class StaticModelService {
         JSONObject resultJson = new JSONObject();
         resultJson.put("static_model", optimizedGeoJson);
         resultJson.put("static_model_parameters", parametersJson);
+        requestDataJson.put("model_type", "static");
         resultJson.put("request_data", requestDataJson);
 
         return resultJson;
@@ -252,7 +253,8 @@ public class StaticModelService {
                 .sum();
 
         double totalExpenses = params.getFUEL_RATE_COURIER_CAR() * params.getFUEL_COST() * totalCourierDistance
-                + params.getDRIVER_SALARY() * params.getMAX_COUNT_COURIERS() + params.getCOURIER_CAR_RATE();
+                + params.getDRIVER_SALARY() * params.getMAX_COUNT_COURIERS()
+                + params.getMAX_COUNT_COURIERS() * params.getCOURIER_CAR_RATE();
 
         return Math.round(totalExpenses * 100.0) / 100.0;
     }

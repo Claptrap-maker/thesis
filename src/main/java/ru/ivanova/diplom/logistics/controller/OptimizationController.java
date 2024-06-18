@@ -79,7 +79,7 @@ public class OptimizationController {
                     e.printStackTrace();
                 }
 
-                return ResponseEntity.ok("Данные в обработке");
+                return ResponseEntity.ok(staticModelGeoJson.toString());
             } else {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("One of keys is invalid.");
             }
